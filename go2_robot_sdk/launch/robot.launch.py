@@ -178,7 +178,7 @@ def generate_launch_description():
     ])
 
     nav_group = GroupAction([
-        # *urdf_launch_nodes,
+        *urdf_launch_nodes,
         Node(
             package='rviz2',
             namespace='',
