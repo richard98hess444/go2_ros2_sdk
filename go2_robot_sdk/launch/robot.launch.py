@@ -30,7 +30,7 @@ def generate_launch_description():
     conn_type = os.getenv('CONN_TYPE', 'webrtc')
 
     rviz_config = "multi_robot_conf.rviz"
-    urdf_file_name = 'multi_go2.urdf'
+    urdf_file_name = 'multi_go2.urdf' # multi_go2.urdf
     urdf = os.path.join(
         get_package_share_directory('go2_robot_sdk'),
         "urdf",
@@ -65,45 +65,32 @@ def generate_launch_description():
     nav2_config = os.path.join(
         get_package_share_directory('go2_robot_sdk'),
         'config',
-        'nav2_params.yaml'
+        # 'nav2_params_sim.yaml'
+        'nav2_params_real.yaml'
+    )
+
+    nav2_config_sim = os.path.join(
+        get_package_share_directory('go2_robot_sdk'),
+        'config',
+        'nav2_params_sim.yaml'
     )
 
     map_dir = os.path.join(
         get_package_share_directory('go2_robot_sdk'),
         'config',
         # 'map_flat_1.yaml'
-        'aic_map_2.yaml'
+        # 'aic_map_2.yaml'
+        # 'zone1.yaml'
+        # 'zone2.yaml'
+        'qrc_iros.yaml'
     )
 
-    urdf_launch_nodes = []
-    urdf_launch_nodes.append(
-        Node(
-            package='robot_state_publisher',
-            executable='robot_state_publisher',
-            name='robot_state_publisher',
-            output='screen',
-            namespace="robot0",
-            parameters=[{'use_sim_time': use_sim_time,
-                         'robot_description': robot_desc_modified_lst[0]}], 
-            arguments=[urdf]
-        ),
-    )
-    urdf_launch_nodes.append(
-        Node(
-            package='pointcloud_to_laserscan',
-            executable='pointcloud_to_laserscan_node',
-            name='pointcloud_to_laserscan',
-            remappings=[
-                ('cloud_in', '/robot0/point_cloud2'),
-                ('scan', '/scan'),
-            ],
-            parameters=[{
-                'target_frame': 'robot0/base_link',
-                'max_height': 0.5,
-                'use_sim_time': use_sim_time
-            }],
-            output='screen',
-        ),
+    map_dir_sim = os.path.join(
+        get_package_share_directory('go2_robot_sdk'),
+        'config',
+        # 'map_flat_1.yaml'
+        'qrc_iros.yaml'
+        # 'aic_map_2.yaml'
     )
 
     abandon_group = GroupAction([
@@ -112,13 +99,6 @@ def generate_launch_description():
             executable='ros2_go2_video',
             parameters=[{'robot_ip': robot_ip,
                          'robot_token': robot_token}],
-        ),
-        Node(
-            package='tf2_ros',
-            executable='static_transform_publisher',
-            name='static_tf_pub_base_link_to_base_footprint',
-            arguments=['0', '0', '0', '0', '0', '0', 'robot0/base_link', 'base_footprint'],
-            parameters=[{'use_sim_time': use_sim_time}],
         ),
         Node(
             package='nav2_tutorial',
@@ -177,8 +157,7 @@ def generate_launch_description():
         ),
     ])
 
-    nav_group = GroupAction([
-        *urdf_launch_nodes,
+    slam_group = GroupAction([
         Node(
             package='rviz2',
             namespace='',
@@ -187,6 +166,204 @@ def generate_launch_description():
             name='rviz2',
             arguments=['-d' + os.path.join(get_package_share_directory('go2_robot_sdk'), 'config', rviz_config)]
         ),
+        Node(
+            package='robot_state_publisher',
+            executable='robot_state_publisher',
+            name='robot_state_publisher',
+            output='screen',
+            namespace="robot0",
+            parameters=[{'use_sim_time': use_sim_time,
+                         'robot_description': robot_desc_modified_lst[0]}], 
+            arguments=[urdf]
+        ),
+        Node(
+            package='tf2_ros',
+            executable='static_transform_publisher',
+            name='static_tf_pub_base_link_to_laser',
+            arguments=['0.2', '0', '0.2', '0', '0', '0', 'robot0/base_link', 'laser'],
+            parameters=[{'use_sim_time': use_sim_time}],
+        ),
+        Node(
+            package='tf2_ros',
+            executable='static_transform_publisher',
+            name='static_tf_pub_base_link_to_base_footprint',
+            arguments=['0.0', '0.0', '0.0', '0.0', '0.0', '0.0', 'robot0/base_link', 'base_footprint'],
+            parameters=[{'use_sim_time': use_sim_time}],
+        ),
+        Node(
+            package='pointcloud_to_laserscan',
+            executable='pointcloud_to_laserscan_node',
+            name='pointcloud_to_laserscan',
+            remappings=[
+                ('cloud_in', '/robot0/point_cloud2'),
+                ('scan', '/scan'),
+            ],
+            parameters=[{
+                'target_frame': 'robot0/base_link',
+                'max_height': 0.5,
+                'use_sim_time': use_sim_time
+            }],
+            output='screen',
+        ),
+
+        # navigation2
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource([
+                os.path.join(get_package_share_directory('nav2_bringup'), 
+                             'launch', 
+                             'navigation_launch.py') # navigation_launch
+            ]),
+            launch_arguments={
+                'use_sim_time': use_sim_time,
+            }.items(),
+        ),
+
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource([
+                os.path.join(get_package_share_directory('slam_toolbox'), 'launch', 'online_async_launch.py')
+            ]),
+            launch_arguments={
+                'params_file': slam_toolbox_config,
+                'use_sim_time': use_sim_time,
+            }.items(),
+        ),
+    ])
+
+    simulation_group = GroupAction([
+
+        # robot state publisher
+        Node(
+            package='robot_state_publisher',
+            executable='robot_state_publisher',
+            name='robot_state_publisher',
+            output='screen',
+            namespace="robot0",
+            parameters=[{'use_sim_time': use_sim_time,
+                         'robot_description': robot_desc_modified_lst[0]}], 
+            arguments=[urdf]
+        ),
+
+        # tf: base to laser
+        Node(
+            package='tf2_ros',
+            executable='static_transform_publisher',
+            name='static_tf_pub_base_link_to_laser',
+            arguments=['0.2', '0', '0.2', '0', '0', '0', 'robot0/base_link', 'laser'],
+            parameters=[{'use_sim_time': use_sim_time}],
+        ),
+
+        # point cloud to laser scan
+        Node(
+            package='pointcloud_to_laserscan',
+            executable='pointcloud_to_laserscan_node',
+            name='pointcloud_to_laserscan',
+            remappings=[
+                ('cloud_in', '/robot0/point_cloud2'),
+                ('scan', '/scan'),
+            ],
+            parameters=[{
+                'target_frame': 'robot0/base_link',
+                'max_height': 0.5,
+                'use_sim_time': use_sim_time
+            }],
+            output='screen',
+        ),
+
+        # cmd_vel topic relay
+        Node(
+            package='topic_tools',
+            executable='relay',
+            name='robot0_cmd_vel_relay',
+            parameters=[
+                {'input_topic': '/cmd_vel_nav'},
+                {'output_topic': '/robot0/cmd_vel'}
+            ],
+            output='screen',
+        ),
+
+        # rviz
+        Node(
+            package='rviz2',
+            namespace='',
+            executable='rviz2',
+            condition=UnlessCondition(no_rviz2),
+            name='rviz2',
+            arguments=['-d' + os.path.join(get_package_share_directory('go2_robot_sdk'), 'config', rviz_config)]
+        ),
+
+        # navigation
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource([
+                os.path.join(get_package_share_directory('nav2_bringup'), 
+                             'launch', 
+                             'bringup_launch.py') # navigation_launch
+            ]),
+            launch_arguments={
+                'map': map_dir_sim,
+                'params_file': nav2_config_sim,
+                'use_sim_time': use_sim_time,
+            }.items(),
+        ),
+    ])
+
+    nav_group = GroupAction([
+
+        # Livox Mid 360
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource([
+                os.path.join(get_package_share_directory('livox_ros_driver2'), 'launch_ROS2', 'msg_MID360_launch.py')
+            ]),
+        ),
+
+        # point cloud to laser scan
+        Node(
+            package='pointcloud_to_laserscan',
+            executable='pointcloud_to_laserscan_node',
+            name='pointcloud_to_laserscan',
+            remappings=[
+                ('cloud_in', '/livox/lidar'),
+                ('scan', '/scan'),
+            ],
+            parameters=[{
+                'target_frame': 'livox_frame',
+                'max_height': 0.5,
+                'use_sim_time': use_sim_time
+            }],
+            output='screen',
+        ),
+
+        # tf: base_link to lidar
+        Node(
+            package='tf2_ros',
+            executable='static_transform_publisher',
+            name='static_tf_pub_base_link_to_livox_frame',
+            arguments=['0.2', '0.0', '0.1', '0.0', '0.0', '0.0', 'base_link', 'livox_frame'],
+            parameters=[{'use_sim_time': use_sim_time}],
+        ),
+
+        # cmd_vel topic relay
+        Node(
+            package='topic_tools',
+            executable='relay',
+            name='a1_cmd_vel_relay',
+            parameters=[
+                {'input_topic': '/cmd_vel_nav'},
+                {'output_topic': '/cmd_vel'}
+            ],
+            output='screen',
+        ),
+
+        # rviz
+        Node(
+            package='rviz2',
+            namespace='',
+            executable='rviz2',
+            condition=UnlessCondition(no_rviz2),
+            name='rviz2',
+            arguments=['-d' + os.path.join(get_package_share_directory('go2_robot_sdk'), 'config', rviz_config)]
+        ),
+
+        # navigation
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource([
                 os.path.join(get_package_share_directory('nav2_bringup'), 
@@ -215,6 +392,8 @@ def generate_launch_description():
     ld.add_action(waypoint_arg)
     waypoint = LaunchConfiguration('waypoint')
     ld.add_action(nav_group)
+    # ld.add_action(simulation_group)
+    # ld.add_action(slam_group)
     ld.add_action(GroupAction(actions=[waypoint_group], condition=IfCondition(waypoint)))
 
     return ld
